@@ -1,0 +1,107 @@
+import pytest
+
+from load_scores import load_scores
+
+
+def test_reads_valid_rows_and_keeps_duplicate_names(tmp_path):
+    path = tmp_path / "scores.csv"
+    path.write_text(
+        "이름,점수\n"
+        " 홍길동 , 88 \n"
+        "홍길동,91\n"
+        '"Kim, Hana",77\n',
+        encoding="utf-8",
+    )
+
+    kept, skipped = load_scores(path)
+
+    assert kept == [("홍길동", 88), ("홍길동", 91), ("Kim, Hana", 77)]
+    assert skipped == []
+
+
+@pytest.mark.parametrize(
+    ("score", "expected_kept", "expected_reason"),
+    [
+        (0, True, None),
+        (1, True, None),
+        (99, True, None),
+        (100, True, None),
+        (-1, False, "점수가 0~100 밖"),
+        (101, False, "점수가 0~100 밖"),
+    ],
+)
+def test_score_boundaries(tmp_path, score, expected_kept, expected_reason):
+    path = tmp_path / "boundary.csv"
+    path.write_text(f"이름,점수\n홍길동,{score}\n", encoding="utf-8")
+
+    kept, skipped = load_scores(path)
+
+    if expected_kept:
+        assert kept == [("홍길동", score)]
+        assert skipped == []
+    else:
+        assert kept == []
+        assert skipped == [(2, f"홍길동,{score}", expected_reason)]
+
+
+def test_skips_invalid_rows_with_line_number_original_and_reason(tmp_path):
+    path = tmp_path / "invalid.csv"
+    path.write_text(
+        "이름,점수\n"
+        "열하나\n"
+        "열,둘,셋\n"
+        ",80\n"
+        "이름,\n"
+        "이름,결석\n"
+        "낮은점수,-1\n"
+        "높은점수,101\n",
+        encoding="utf-8",
+    )
+
+    kept, skipped = load_scores(path)
+
+    assert kept == []
+    assert skipped == [
+        (2, "열하나", "열 개수가 2가 아님"),
+        (3, "열,둘,셋", "열 개수가 2가 아님"),
+        (4, ",80", "이름이 비어 있음"),
+        (5, "이름,", "점수가 비어 있음"),
+        (6, "이름,결석", "점수가 정수가 아님"),
+        (7, "낮은점수,-1", "점수가 0~100 밖"),
+        (8, "높은점수,101", "점수가 0~100 밖"),
+    ]
+
+
+def test_ignores_blank_lines_without_recording_them(tmp_path):
+    path = tmp_path / "blank.csv"
+    path.write_text(
+        "이름,점수\n홍길동,88\n\n이순신,92\n",
+        encoding="utf-8",
+    )
+
+    kept, skipped = load_scores(path)
+
+    assert kept == [("홍길동", 88), ("이순신", 92)]
+    assert skipped == []
+
+
+def test_header_only_file_returns_empty_lists(tmp_path):
+    path = tmp_path / "header.csv"
+    path.write_text("이름,점수\n", encoding="utf-8")
+
+    assert load_scores(path) == ([], [])
+
+
+def test_reads_utf8_bom_file(tmp_path):
+    path = tmp_path / "bom.csv"
+    path.write_text("이름,점수\n홍길동,88\n", encoding="utf-8-sig")
+
+    kept, skipped = load_scores(path)
+
+    assert kept == [("홍길동", 88)]
+    assert skipped == []
+
+
+def test_missing_file_raises_file_not_found_error(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        load_scores(tmp_path / "missing.csv")
