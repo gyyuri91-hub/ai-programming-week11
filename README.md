@@ -9,7 +9,8 @@
 
 ## 3. 어떻게 쓰나요 (How)
 먼저 테스트 및 커버리지 도구를 설치합니다.
-```bash
+ ```bash
+
 python -m pip install pytest pytest-cov
 2026101067 황규리
 
